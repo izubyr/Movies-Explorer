@@ -51,4 +51,6 @@ export default function App() {
       <footer><span>Little store. A small start to something bigger.</span><span>React <span className="footer-plus">+</span> Redux Toolkit</span></footer>
     </div>
   )
+
+  
 }
