@@ -1,56 +1,123 @@
-import { useSelector } from 'react-redux'
-import { selectCartCount } from './features/cart/cartSlice.js'
-import ProductList from './components/ProductList.jsx'
-import Cart from './components/Cart.jsx'
+import { useEffect, useState } from 'react'
+import { Route, Routes } from 'react-router-dom'
+import Footer from './components/Footer'
+import Navbar from './components/Navbar'
+import Home from './pages/Home'
+import Search from './pages/Search'
+import SavedMovies from './pages/SavedMovies'
+import NotFound from './pages/NotFound'
+import { getPopularMovies, searchMovies } from './app/movies'
 
-function Header() {
-  // This separate component reads the same cart state as Cart.
-  const count = useSelector(selectCartCount)
+const STORAGE_KEY = 'movies-explorer'
 
-  return (
-    <header className="header">
-      <a className="brand" href="#"><span className="brand-mark" aria-hidden="true">l.</span>little store<span className="brand-dot">.</span></a>
-      <div className="header-right"><span className="demo-label">A Redux Toolkit demo</span><a className="header-cart" href="#cart-heading">Cart <span>{count}</span></a></div>
-    </header>
-  )
+function getSavedMovies() {
+  try {
+    const savedMovies = localStorage.getItem(STORAGE_KEY)
+    return savedMovies ? JSON.parse(savedMovies) : []
+  } catch {
+    return []
+  }
 }
 
-function StatePreview() {
-  const cart = useSelector((state) => state.cart)
+function App() {
+  const [movies, setMovies] = useState([])
+  const [searchResults, setSearchResults] = useState([])
+  const [savedMovies, setSavedMovies] = useState(getSavedMovies)
+  const [loading, setLoading] = useState(true)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [searchError, setSearchError] = useState('')
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedMovies))
+  }, [savedMovies])
+
+  async function loadPopularMovies() {
+    setLoading(true)
+    setError('')
+    try {
+      const popularMovies = await getPopularMovies()
+      setMovies(popularMovies)
+    } catch (loadError) {
+      setError(loadError.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let isActive = true
+
+    getPopularMovies()
+      .then((popularMovies) => {
+        if (isActive) setMovies(popularMovies)
+      })
+      .catch((loadError) => {
+        if (isActive) setError(loadError.message)
+      })
+      .finally(() => {
+        if (isActive) setLoading(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  async function handleSearch(searchTerm) {
+    if (!searchTerm) {
+      setSearchResults([])
+      setSearchError('')
+      setSearchLoading(false)
+      return
+    }
+
+    setSearchLoading(true)
+    setSearchError('')
+    try {
+      const results = await searchMovies(searchTerm)
+      setSearchResults(results)
+    } catch (searchProblem) {
+      setSearchError(searchProblem.message)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  function addToWatchlist(movie) {
+    setSavedMovies((currentMovies) => {
+      if (currentMovies.some((savedMovie) => savedMovie.id === movie.id)) return currentMovies
+      return [...currentMovies, { ...movie, status: 'watchlist' }]
+    })
+  }
+
+  function markAsWatched(movieId) {
+    setSavedMovies((currentMovies) => currentMovies.map((movie) => (
+      movie.id === movieId ? { ...movie, status: 'watched' } : movie
+    )))
+  }
+
+  function getStatus(movieId) {
+    return savedMovies.find((movie) => movie.id === movieId)?.status
+  }
+
+  const watchlistMovies = savedMovies.filter((movie) => movie.status === 'watchlist')
+  const watchedMovies = savedMovies.filter((movie) => movie.status === 'watched')
 
   return (
-    <details className="state-preview">
-      <summary><span><span className="live-dot" /> Peek inside the store</span><code>state.cart</code></summary>
-      <pre>{JSON.stringify(cart, null, 2)}</pre>
-    </details>
-  )
-}
+    <div className="min-h-screen bg-[#0b1326]">
+      <Navbar watchlistCount={watchlistMovies.length} watchedCount={watchedMovies.length} />
+      <Routes>
+        <Route path="/" element={<Home movies={movies} loading={loading} error={error} onRetry={loadPopularMovies} getStatus={getStatus} onAdd={addToWatchlist} />} />
+        <Route path="/search" element={<Search movies={searchResults} loading={searchLoading} error={searchError} onSearch={handleSearch} getStatus={getStatus} onAdd={addToWatchlist} />} />
+        <Route path="/watchlist" element={<SavedMovies title="Watchlist" eyebrow="For a night in" movies={watchlistMovies} emptyMessage="Your watchlist is empty. Search for a movie and save it for later." getStatus={getStatus} onMarkWatched={markAsWatched} />} />
+        <Route path="/watched" element={<SavedMovies title="Watched history" eyebrow="Already seen" movies={watchedMovies} emptyMessage="No watched movies yet. Mark one from your Watchlist as watched and it will show up here." watched getStatus={getStatus} />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
 
-export default function App() {
-  return (
-    <div className="app-shell">
-      <Header />
-      <main>
-        <section className="intro">
-          <p className="eyebrow"><span /> SMALL SHOP, BIG IDEAS</p>
-          <h1>Good things.<br /><span>Shared state.</span></h1>
-          <p>A tiny shop to explore Redux Toolkit. Add something you like<br className="desktop-break" /> and see how one action brings every component together.</p>
-          <div className="lesson-tag"><span aria-hidden="true">✳</span> Made for learning. Built with React + Redux Toolkit.</div>
-        </section>
-        <div className="shop-layout"><ProductList /><Cart /></div>
-        <section className="lesson" aria-labelledby="lesson-heading">
-          <div className="lesson-intro"><p className="eyebrow">UNDER THE HOOD</p><h2 id="lesson-heading">One click. A simple flow.</h2><p>Try adding an item, then follow the data.</p></div>
-          <ol className="flow">
-            <li><span className="step">1</span><div><h3>Dispatch an action</h3><p>A button tells Redux what happened.</p><code>dispatch(itemAdded(product))</code></div></li>
-            <li><span className="step">2</span><div><h3>Update the state</h3><p>The slice reducer updates the cart.</p><code>state.items.push(…)</code></div></li>
-            <li><span className="step">3</span><div><h3>Update the UI</h3><p>Selectors read the new shared state.</p><code>useSelector(selectCartCount)</code></div></li>
-          </ol>
-        </section>
-        <StatePreview />
-      </main>
-      <footer><span>Little store. A small start to something bigger.</span><span>React <span className="footer-plus">+</span> Redux Toolkit</span></footer>
+      <Footer />
     </div>
   )
-
-  
 }
+
+export default App
